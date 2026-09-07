@@ -19,3 +19,6 @@ appsettings.*.Local.json
 
 # macOS / editor cruft
 .DS_Store
+
+# Stryker mutation-testing output
+StrykerOutput/
