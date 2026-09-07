@@ -1,0 +1,20 @@
+{
+  "//": "Copy to appsettings.Development.json (git-ignored) and fill in real values for local F5 runs. Never commit the filled copy.",
+
+  "TokenValidation": {
+    "Audiences": [ "00000000-0000-0000-0000-000000000000" ],
+    "TenantId": "00000000-0000-0000-0000-000000000000"
+  },
+
+  "Connections": {
+    "ServiceConnection": {
+      "Settings": {
+        "AuthType": "ClientSecret",
+        "AuthorityEndpoint": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
+        "ClientId": "00000000-0000-0000-0000-000000000000",
+        "ClientSecret": "your-local-dev-secret",
+        "Scopes": [ "https://api.botframework.com/.default" ]
+      }
+    }
+  }
+}
