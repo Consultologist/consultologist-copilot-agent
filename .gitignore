@@ -1,0 +1,24 @@
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+# Local secrets and environment-specific config — NEVER commit real values.
+# Client ids, tenant id, connection secrets and the OBO wiring live here at
+# runtime; the checked-in appsettings.json carries placeholders only.
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.Local.json
+.env
+
+# Rider / VS
+.idea/
+.vs/
+
+# macOS / editor cruft
+.DS_Store
+
+# Stryker mutation-testing output
+StrykerOutput/

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The host: an ASP.NET Core web app that is the Microsoft 365 Agents SDK
+    custom-engine agent. It brings in the SDK and wires the engine-facing Core.
+    Azure Bot Service brokers the Teams / M365 Copilot channels to /api/messages.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pin the latest 1.8.x confirmed on nuget.org; the rest come transitively. -->
+    <PackageReference Include="Microsoft.Agents.Hosting.AspNetCore" Version="1.8.77" />
+    <PackageReference Include="Microsoft.Agents.Authentication.Msal" Version="1.8.77" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Consultologist.CopilotAgent.Core\Consultologist.CopilotAgent.Core.csproj" />
+  </ItemGroup>
+
+</Project>

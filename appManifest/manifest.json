@@ -1,0 +1,51 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.22",
+  "version": "1.0.0",
+  "id": "${{AAD_APP_CLIENT_ID}}",
+  "developer": {
+    "name": "Consultologist",
+    "websiteUrl": "https://consultologist.ai",
+    "privacyUrl": "https://consultologist.ai/privacy",
+    "termsOfUseUrl": "https://consultologist.ai/terms"
+  },
+  "name": {
+    "short": "Consultologist",
+    "full": "Consultologist Copilot Agent"
+  },
+  "description": {
+    "short": "Turn a referral into a consult draft in Teams.",
+    "full": "Consultologist signs you in and generates a consult draft from your account's workflow package. Fill the intake form (and attach a referral document) in a personal chat; the consult runs on the Consultologist engine as you, and the deliverable comes back in the flow you already work in."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#1F6FEB",
+  "bots": [
+    {
+      "botId": "${{AAD_APP_CLIENT_ID}}",
+      "scopes": [ "personal" ],
+      "supportsFiles": true,
+      "isNotificationOnly": false
+    }
+  ],
+  "webApplicationInfo": {
+    "id": "${{AAD_APP_CLIENT_ID}}",
+    "resource": "api://botid-${{AAD_APP_CLIENT_ID}}"
+  },
+  "copilotAgents": {
+    "customEngineAgents": [
+      {
+        "id": "${{AAD_APP_CLIENT_ID}}",
+        "type": "bot"
+      }
+    ]
+  },
+  "validDomains": [
+    "token.botframework.com",
+    "*.botframework.com",
+    "${{BOT_DOMAIN}}"
+  ],
+  "permissions": [ "identity", "messageTeamMembers" ]
+}
