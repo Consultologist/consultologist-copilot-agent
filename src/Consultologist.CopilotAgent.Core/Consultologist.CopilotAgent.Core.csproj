@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The agent's engine-facing core: the API client, the wire DTOs, the
+    ConsultInputValue carrier, and the two pure mapping functions (declared
+    inputs -> Adaptive Card; card submit -> ConsultInputValue map). It depends
+    on nothing but the framework's System.Text.Json / System.Net.Http, so it
+    builds and unit-tests without the Microsoft.Agents SDK or any Azure/Teams
+    plumbing. Everything verifiable about #667's scaffold lives here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
