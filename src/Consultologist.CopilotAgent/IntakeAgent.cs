@@ -23,6 +23,14 @@ namespace Consultologist.CopilotAgent;
 /// provenance are the engine's, computed at job start. See
 /// <c>docs/COPILOT_AGENT_SPIKE.md</c> and <c>docs/SATELLITE_CALLERS.md</c> in the
 /// engine repo.</para>
+///
+/// <para><b>Async delivery.</b> A consult run takes minutes, far longer than an
+/// <c>Action.Execute</c> invoke may be held open, so the submit handler
+/// acknowledges immediately and the run (start → poll → deliverable) happens
+/// off-turn, posting results back with a proactive message
+/// (<see cref="IChannelAdapter.ContinueConversationAsync(string, ConversationReference, AgentCallbackHandler, CancellationToken)"/>).
+/// The background task is fine for this hosted agent; a large deployment would
+/// move it onto the SDK's hosted task queue with a durable store.</para>
 /// </summary>
 public sealed class IntakeAgent : AgentApplication
 {
@@ -31,17 +39,28 @@ public sealed class IntakeAgent : AgentApplication
     private const string OboHandler = "api";
 
     private const string PendingFilesKey = "pendingReferralFiles";
+    private const string CurrentPackageKey = "currentPackage";
 
     private static readonly JsonSerializerOptions SubmitOptions = new(JsonSerializerDefaults.Web);
 
     private readonly EngineApiClient _engine;
+    private readonly IChannelAdapter _adapter;
+    private readonly string _botAppId;
     private readonly string _documentSlot;
     private readonly TimeSpan _pollInterval;
 
-    public IntakeAgent(AgentApplicationOptions options, EngineApiClient engine, IConfiguration configuration)
+    public IntakeAgent(
+        AgentApplicationOptions options,
+        EngineApiClient engine,
+        IChannelAdapter adapter,
+        IConfiguration configuration)
         : base(options)
     {
         _engine = engine;
+        _adapter = adapter;
+        _botAppId = configuration["TokenValidation:Audiences:0"]
+            ?? configuration["Connections:ServiceConnection:Settings:ClientId"]
+            ?? throw new InvalidOperationException("The bot app id (TokenValidation:Audiences) is not configured.");
         _documentSlot = configuration["Engine:DocumentInputSlot"] ?? "referral";
         _pollInterval = TimeSpan.FromSeconds(
             double.TryParse(configuration["Engine:PollIntervalSeconds"], out var s) ? s : 3);
@@ -91,6 +110,10 @@ public sealed class IntakeAgent : AgentApplication
             return;
         }
 
+        // Cache the resolved package so the submit handler maps inputs without a
+        // second (slow) round-trip inside the invoke turn.
+        turnState.Conversation.SetValue(CurrentPackageKey, JsonSerializer.Serialize(package, SubmitOptions));
+
         var card = IntakeCardBuilder.Build(package);
         var attachment = new AdaptiveCardCard(card.ToJsonString()).ToAttachment();
         await turnContext.SendActivityAsync(MessageFactory.Attachment(attachment), ct);
@@ -99,16 +122,21 @@ public sealed class IntakeAgent : AgentApplication
     private async Task<AdaptiveCardInvokeResponse> OnIntakeSubmitAsync(
         ITurnContext turnContext, ITurnState turnState, object data, CancellationToken ct)
     {
+        // Keep this handler fast: an Action.Execute invoke must return in seconds.
+        // No polling here — the run happens off-turn (DeliverConsultInBackground).
         var token = await UserAuthorization.GetTurnTokenAsync(turnContext, OboHandler);
 
-        WorkflowPackageResponse package;
-        try
+        var package = ReadCachedPackage(turnState);
+        if (package is null)
         {
-            package = await _engine.GetCurrentPackageAsync(token, ct);
-        }
-        catch (EngineApiException ex)
-        {
-            return MessageResponse($"Could not load your workflow package: {ex.Message}");
+            try
+            {
+                package = await _engine.GetCurrentPackageAsync(token, ct);
+            }
+            catch (EngineApiException ex)
+            {
+                return MessageResponse($"Could not load your workflow package: {ex.Message}");
+            }
         }
 
         var submit = JsonNode.Parse(JsonSerializer.Serialize(data, SubmitOptions))?.AsObject() ?? new JsonObject();
@@ -126,35 +154,62 @@ public sealed class IntakeAgent : AgentApplication
             Inputs = read.Inputs,
             InputFiles = ReadPendingFiles(turnState),
         };
-
-        ConsultGenerationJobStartResponse start;
-        try
-        {
-            start = await _engine.StartJobAsync(token, request, ct);
-        }
-        catch (EngineApiException ex)
-        {
-            return MessageResponse($"The engine refused the run: {ex.Message}");
-        }
-
         ClearPendingFiles(turnState);
-        await turnContext.SendActivityAsync($"Consult started (job {start.JobId}). Generating…", cancellationToken: ct);
 
-        // The scaffold polls inline (results are fetched, never pushed). A build
-        // pass should move long runs to the SSE /events stream + a proactive
-        // message so the invoke turn is never held open.
-        ConsultGenerationJobResponse job;
-        try
-        {
-            job = await _engine.PollToCompletionAsync(token, start.JobId, _pollInterval, ct);
-        }
-        catch (EngineApiException ex)
-        {
-            return MessageResponse($"Could not read the job status: {ex.Message}");
-        }
+        // Hand the run to a background task and reply immediately. The turn's
+        // CancellationToken dies with the turn, so the background work uses None.
+        var reference = turnContext.Activity.GetConversationReference();
+        DeliverConsultInBackground(reference, token, request);
 
-        await turnContext.SendActivityAsync(DescribeOutcome(job), cancellationToken: ct);
-        return MessageResponse(job.Success ? "Consult ready." : "The consult did not complete — see the message above.");
+        return MessageResponse("Working on your consult — I'll post the result here as soon as it's ready.");
+    }
+
+    /// <summary>Start the job, poll it to completion, and post the deliverable
+    /// back as proactive messages — all off the invoke turn.</summary>
+    private void DeliverConsultInBackground(ConversationReference reference, string token, ConsultGenerationRequest request)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var start = await _engine.StartJobAsync(token, request, CancellationToken.None).ConfigureAwait(false);
+                await SendProactiveAsync(reference, $"Consult started (job {start.JobId}). Generating…").ConfigureAwait(false);
+
+                var job = await _engine.PollToCompletionAsync(token, start.JobId, _pollInterval, CancellationToken.None).ConfigureAwait(false);
+                await SendProactiveAsync(reference, DescribeOutcome(job)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await SendProactiveAsync(reference, $"The consult run could not be completed: {ex.Message}").ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Nothing more we can do from the background task.
+                }
+            }
+        });
+    }
+
+    private Task SendProactiveAsync(ConversationReference reference, string text) =>
+        // The agent-id overload is what a background proactive send needs — the
+        // ClaimsIdentity overload the SDK now prefers wants a turn identity we no
+        // longer hold here; the SDK synthesises one from the agent id for us.
+#pragma warning disable CS0618
+        _adapter.ContinueConversationAsync(
+            _botAppId,
+            reference,
+            (proactive, ct) => proactive.SendActivityAsync(text, cancellationToken: ct),
+            CancellationToken.None);
+#pragma warning restore CS0618
+
+    private static WorkflowPackageResponse? ReadCachedPackage(ITurnState turnState)
+    {
+        var raw = turnState.Conversation.GetValue<string>(CurrentPackageKey);
+        return string.IsNullOrEmpty(raw)
+            ? null
+            : JsonSerializer.Deserialize<WorkflowPackageResponse>(raw, SubmitOptions);
     }
 
     private async Task StashAttachedDocumentsAsync(
