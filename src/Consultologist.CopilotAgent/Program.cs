@@ -22,12 +22,13 @@ builder.Services.AddHttpClient<EngineApiClient>(client =>
 builder.Services.AddSingleton<IStorage, MemoryStorage>();
 
 // Agent hosting defaults (AgentApplicationOptions, the channel adapter, turn
-// state) and the Teams personal-chat attachment downloader, so an attached
-// referral arrives already downloaded in turnState.Temp.InputFiles. When the
-// M365 Copilot channel is enabled, also add AddAgentM365AttachmentDownloader()
-// for its authenticated file URLs.
+// state) plus the attachment downloaders, so an attached referral arrives
+// already downloaded in turnState.Temp.InputFiles: AddAgentAttachmentDownloader
+// for Teams personal chat, and AddAgentM365AttachmentDownloader for the M365
+// Copilot surface's authenticated file URLs.
 builder.AddAgentDefaults()
     .AddAgentAttachmentDownloader()
+    .AddAgentM365AttachmentDownloader()
     .AddAgent<IntakeAgent>()
     .AddAgentAuthorization(b => b.AddAgentAspNetAuthentication());
 
