@@ -83,7 +83,7 @@ public sealed class EngineApiClient(HttpClient http)
         {
             ct.ThrowIfCancellationRequested();
             var job = await GetJobAsync(bearer, jobId, ct).ConfigureAwait(false);
-            if (!IsRunning(job.Status))
+            if (JobStatus.IsTerminal(job.Status))
             {
                 return job;
             }
@@ -91,11 +91,6 @@ public sealed class EngineApiClient(HttpClient http)
             await Task.Delay(interval, ct).ConfigureAwait(false);
         }
     }
-
-    private static bool IsRunning(string status) =>
-        status.Equals("Pending", StringComparison.OrdinalIgnoreCase)
-        || status.Equals("Running", StringComparison.OrdinalIgnoreCase)
-        || status.Equals("Scheduled", StringComparison.OrdinalIgnoreCase);
 
     private static HttpRequestMessage Build(HttpMethod method, string relativeUrl, string bearer)
     {

@@ -91,6 +91,29 @@ public sealed record ConsultGenerationResultDocumentResponse(
     string? Text = null,
     string? DocumentHash = null);
 
+/// <summary>
+/// The engine's job-status vocabulary (`ConsultGenerationJobStatuses`): the
+/// non-terminal states <c>Queued</c>, <c>Scheduled</c>, <c>Running</c> and the
+/// terminal states <c>Completed</c>, <c>Failed</c>, <c>Cancelled</c>. The poller
+/// asks only "is this terminal?" so any transient/unknown status keeps it
+/// polling rather than reporting a premature failure.
+/// </summary>
+public static class JobStatus
+{
+    public const string Queued = "Queued";
+    public const string Scheduled = "Scheduled";
+    public const string Running = "Running";
+    public const string Completed = "Completed";
+    public const string Failed = "Failed";
+    public const string Cancelled = "Cancelled";
+
+    private static readonly HashSet<string> Terminal =
+        new(StringComparer.OrdinalIgnoreCase) { Completed, Failed, Cancelled };
+
+    /// <summary>True once the job has reached a terminal state and will not change.</summary>
+    public static bool IsTerminal(string status) => status is not null && Terminal.Contains(status);
+}
+
 // ----- Package discovery (GET WorkflowPackages/Current) -----
 
 /// <summary>
