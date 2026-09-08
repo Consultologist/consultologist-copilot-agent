@@ -1,0 +1,50 @@
+name: Deploy
+
+# Continuous deploy to Azure App Service via GitHub → Azure OIDC (no secrets).
+# The 'deploy' environment gates the run and matches the federated-credential
+# subject on the consultologist-copilot-agent-deploy app registration, which
+# holds Contributor scoped to the resource group only.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: deploy
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish
+        run: >
+          dotnet publish src/Consultologist.CopilotAgent -c Release -o publish
+          -p:SourceRevisionId=${{ github.sha }} -p:ContinuousIntegrationBuild=true
+
+      - name: Azure login (OIDC)
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@5cfb776471c748b351e1ebf5770e208a54ace016 # v2.2.19
+        with:
+          app-name: consultologist-copilot-agent
+          package: publish
+
+      - name: Smoke check
+        run: >
+          curl -fsS --retry 10 --retry-delay 10 --retry-all-errors
+          https://consultologist-copilot-agent.azurewebsites.net/ > /dev/null
